@@ -3,8 +3,73 @@
 #include "util/ILog.h"
 #include <Arduino.h>
 #include <Wire.h>
+#include <cstddef>
 
 #include "indev/lv_indev_private.h"
+
+namespace
+{
+constexpr uint8_t TCA8418_REG_CFG = 0x01;
+constexpr uint8_t TCA8418_REG_INT_STAT = 0x02;
+constexpr uint8_t TCA8418_REG_KEY_LCK_EC = 0x03;
+constexpr uint8_t TCA8418_REG_KEY_EVENT_A = 0x04;
+constexpr uint8_t TCA8418_REG_GPIO_INT_EN_1 = 0x1a;
+constexpr uint8_t TCA8418_REG_GPIO_INT_EN_2 = 0x1b;
+constexpr uint8_t TCA8418_REG_GPIO_INT_EN_3 = 0x1c;
+constexpr uint8_t TCA8418_REG_KP_GPIO_1 = 0x1d;
+constexpr uint8_t TCA8418_REG_KP_GPIO_2 = 0x1e;
+constexpr uint8_t TCA8418_REG_KP_GPIO_3 = 0x1f;
+constexpr uint8_t TCA8418_REG_GPI_EM_1 = 0x20;
+constexpr uint8_t TCA8418_REG_GPI_EM_2 = 0x21;
+constexpr uint8_t TCA8418_REG_GPI_EM_3 = 0x22;
+constexpr uint8_t TCA8418_REG_GPIO_DIR_1 = 0x23;
+constexpr uint8_t TCA8418_REG_GPIO_DIR_2 = 0x24;
+constexpr uint8_t TCA8418_REG_GPIO_DIR_3 = 0x25;
+constexpr uint8_t TCA8418_REG_GPIO_INT_LVL_1 = 0x26;
+constexpr uint8_t TCA8418_REG_GPIO_INT_LVL_2 = 0x27;
+constexpr uint8_t TCA8418_REG_GPIO_INT_LVL_3 = 0x28;
+constexpr uint8_t TCA8418_REG_DEBOUNCE_DIS_1 = 0x29;
+constexpr uint8_t TCA8418_REG_DEBOUNCE_DIS_2 = 0x2a;
+constexpr uint8_t TCA8418_REG_DEBOUNCE_DIS_3 = 0x2b;
+
+bool tca8418WriteRegister(uint8_t address, uint8_t reg, uint8_t value)
+{
+    Wire.beginTransmission(address);
+    Wire.write(reg);
+    Wire.write(value);
+    return Wire.endTransmission() == 0;
+}
+
+bool tca8418ReadRegister(uint8_t address, uint8_t reg, uint8_t &value)
+{
+    Wire.beginTransmission(address);
+    Wire.write(reg);
+    if (Wire.endTransmission(false) != 0 || Wire.requestFrom((int)address, 1) != 1 || !Wire.available())
+        return false;
+    value = Wire.read();
+    return true;
+}
+
+uint32_t toLvKey(const TLoraPagerKeyPolicy::Action &action)
+{
+    using Kind = TLoraPagerKeyPolicy::ActionKind;
+    switch (action.kind) {
+    case Kind::Character:
+        return action.codepoint;
+    case Kind::TextBackspace:
+        return LV_KEY_BACKSPACE;
+    case Kind::NavigateBack:
+        return LV_KEY_ESC;
+    case Kind::Submit:
+    case Kind::Activate:
+        return LV_KEY_ENTER;
+    case Kind::NavigateNext:
+        return LV_KEY_NEXT;
+    default:
+        return 0;
+    }
+}
+} // namespace
 
 I2CKeyboardInputDriver::KeyboardList I2CKeyboardInputDriver::i2cKeyboardList;
 
@@ -105,9 +170,13 @@ void TDeckKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev, 
 
 // ---------- TCA8418KeyboardInputDriver Implementation ----------
 
-TCA8418KeyboardInputDriver::TCA8418KeyboardInputDriver(uint8_t address)
+TCA8418KeyboardInputDriver::TCA8418KeyboardInputDriver(uint8_t address) : TCA8418KeyboardInputDriver(address, "TCA8418 Keyboard")
 {
-    registerI2CKeyboard(this, "TCA8418 Keyboard", address);
+}
+
+TCA8418KeyboardInputDriver::TCA8418KeyboardInputDriver(uint8_t address, const char *name) : i2cAddress(address)
+{
+    registerI2CKeyboard(this, name, address);
 }
 
 void TCA8418KeyboardInputDriver::init(void)
@@ -126,30 +195,86 @@ void TCA8418KeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev
 
 // ---------- TLoraPagerKeyboardInputDriver Implementation ----------
 
-TLoraPagerKeyboardInputDriver::TLoraPagerKeyboardInputDriver(uint8_t address) : TCA8418KeyboardInputDriver(address)
+TLoraPagerKeyboardInputDriver::TLoraPagerKeyboardInputDriver(uint8_t address, TLoraPagerInputController &controller)
+    : TCA8418KeyboardInputDriver(address, "TLora Pager Keyboard"), controller(controller)
 {
-    registerI2CKeyboard(this, "TLora Pager Keyboard", address);
 }
 
 void TLoraPagerKeyboardInputDriver::init(void)
 {
-    // Additional initialization for TLora-Pager if needed
     TCA8418KeyboardInputDriver::init();
+
+    bool initialized = true;
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_DIR_1, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_DIR_2, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_DIR_3, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPI_EM_1, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPI_EM_2, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPI_EM_3, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_INT_LVL_1, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_INT_LVL_2, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_INT_LVL_3, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_INT_EN_1, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_INT_EN_2, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_GPIO_INT_EN_3, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_DEBOUNCE_DIS_1, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_DEBOUNCE_DIS_2, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_DEBOUNCE_DIS_3, 0x00);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_KP_GPIO_1, 0x0f);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_KP_GPIO_2, 0xff);
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_KP_GPIO_3, 0x03);
+
+    uint8_t pending = 0;
+    for (uint8_t i = 0; i < 10 && tca8418ReadRegister(i2cAddress, TCA8418_REG_KEY_EVENT_A, pending) && pending != 0; ++i) {
+    }
+    initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_INT_STAT, 0x03);
+    uint8_t config = 0;
+    if (tca8418ReadRegister(i2cAddress, TCA8418_REG_CFG, config))
+        initialized &= tca8418WriteRegister(i2cAddress, TCA8418_REG_CFG, config | 0x01);
+    else
+        initialized = false;
+
+    if (initialized)
+        ILOG_INFO("T-LoRa Pager TCA8418 keyboard initialized");
+    else
+        ILOG_ERROR("T-LoRa Pager TCA8418 keyboard initialization failed");
 }
 
 void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data)
 {
-    // TODO
-    char keyValue = 0;
     data->state = LV_INDEV_STATE_RELEASED;
-    data->key = (uint32_t)keyValue;
+    data->key = 0;
+
+    uint8_t count = 0;
+    uint8_t fifoEvent = 0;
+    if (!tca8418ReadRegister(address, TCA8418_REG_KEY_LCK_EC, count) || (count & 0x0f) == 0 ||
+        !tca8418ReadRegister(address, TCA8418_REG_KEY_EVENT_A, fifoEvent))
+        return;
+
+    data->continue_reading = (count & 0x0f) > 1;
+    if ((count & 0x0f) == 1)
+        tca8418WriteRegister(address, TCA8418_REG_INT_STAT, 0x01);
+
+    lv_group_t *group = lv_indev_get_group(indev);
+    lv_obj_t *focused = group ? lv_group_get_focused(group) : nullptr;
+    const bool textInput = focused && lv_obj_check_type(focused, &lv_textarea_class);
+    const TLoraPagerKeyPolicy::RawEvent raw{static_cast<uint8_t>(fifoEvent & 0x7f), (fifoEvent & 0x80) != 0, millis()};
+    const auto dispatch = controller.feed(raw, {true, textInput});
+    if (dispatch.consumed || !dispatch.policy.emit)
+        return;
+
+    const uint32_t lvKey = toLvKey(dispatch.policy.action);
+    if (lvKey == 0)
+        return;
+    data->state = dispatch.policy.action.pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    data->key = lvKey;
 }
 
 // ---------- TDeckProKeyboardInputDriver Implementation ----------
 
-TDeckProKeyboardInputDriver::TDeckProKeyboardInputDriver(uint8_t address) : TCA8418KeyboardInputDriver(address)
+TDeckProKeyboardInputDriver::TDeckProKeyboardInputDriver(uint8_t address)
+    : TCA8418KeyboardInputDriver(address, "T-Deck Pro Keyboard")
 {
-    registerI2CKeyboard(this, "T-Deck Pro Keyboard", address);
 }
 
 void TDeckProKeyboardInputDriver::init(void)

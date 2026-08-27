@@ -3,6 +3,7 @@
 #include "Arduino.h"
 #include "Wire.h"
 #include "input/InputDriver.h"
+#include "input/TLoraPagerInputController.h"
 #include <list>
 #include <memory>
 #include <string>
@@ -12,7 +13,7 @@ class I2CKeyboardInputDriver : public InputDriver
   public:
     I2CKeyboardInputDriver(void);
     virtual void init(void) override;
-    virtual void task_handler(void) override{};
+    virtual void task_handler(void) override {};
     virtual void readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data) = 0;
     virtual ~I2CKeyboardInputDriver(void) {}
 
@@ -49,15 +50,22 @@ class TCA8418KeyboardInputDriver : public I2CKeyboardInputDriver
     void init(void) override;
     void readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data) override;
     virtual ~TCA8418KeyboardInputDriver(void) {}
+
+  protected:
+    TCA8418KeyboardInputDriver(uint8_t address, const char *name);
+    uint8_t i2cAddress;
 };
 
 class TLoraPagerKeyboardInputDriver : public TCA8418KeyboardInputDriver
 {
   public:
-    TLoraPagerKeyboardInputDriver(uint8_t address);
+    TLoraPagerKeyboardInputDriver(uint8_t address, TLoraPagerInputController &controller);
     void init(void) override;
     void readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data) override;
     virtual ~TLoraPagerKeyboardInputDriver(void) {}
+
+  private:
+    TLoraPagerInputController &controller;
 };
 
 class TDeckProKeyboardInputDriver : public TCA8418KeyboardInputDriver

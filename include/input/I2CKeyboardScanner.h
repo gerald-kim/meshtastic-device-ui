@@ -5,6 +5,7 @@
 #endif
 
 class I2CKeyboardInputDriver;
+class TLoraPagerInputController;
 
 /**
  * @brief This class is used to scan I2C connected keyboards and creates
@@ -16,7 +17,7 @@ class I2CKeyboardScanner
 {
   public:
     I2CKeyboardScanner(void);
-    virtual I2CKeyboardInputDriver *scan(void);
+    virtual I2CKeyboardInputDriver *scan(TLoraPagerInputController *pagerController = nullptr);
     virtual ~I2CKeyboardScanner(void) {}
 
 #ifdef SENSECAP_INDICATOR

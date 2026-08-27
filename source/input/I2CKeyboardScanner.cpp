@@ -57,7 +57,7 @@ void I2CKeyboardScanner::setSecondaryBus(TwoWire *bus)
 
 I2CKeyboardScanner::I2CKeyboardScanner(void) {}
 
-I2CKeyboardInputDriver *I2CKeyboardScanner::scan(void)
+I2CKeyboardInputDriver *I2CKeyboardScanner::scan(TLoraPagerInputController *pagerController)
 {
     I2CKeyboardInputDriver *driver = nullptr;
 #ifndef ARCH_PORTDUINO
@@ -79,7 +79,10 @@ I2CKeyboardInputDriver *I2CKeyboardScanner::scan(void)
 #if defined(T_DECK)
     driver = new TDeckKeyboardInputDriver(SCAN_TDECK_KB_ADDR);
 #elif defined(T_LORA_PAGER)
-    driver = new TLoraPagerKeyboardInputDriver(SCAN_TCA8418_KB_ADDR);
+    if (pagerController)
+        driver = new TLoraPagerKeyboardInputDriver(SCAN_TCA8418_KB_ADDR, *pagerController);
+    else
+        ILOG_ERROR("T-LoRa Pager keyboard controller is unavailable");
 #elif defined(T_DECK_PRO)
     driver = new TDeckProKeyboardInputDriver(SCAN_TCA8418_KB_ADDR);
 #elif defined(ELECROW_ThinkNode_M9)

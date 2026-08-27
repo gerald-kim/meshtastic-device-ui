@@ -59,7 +59,11 @@ void DeviceGUI::init(IClientBase *client)
 
     ILOG_DEBUG("Input driver init...");
     I2CKeyboardScanner scanner;
+#if defined(T_LORA_PAGER) || defined(MESHTASTIC_KOREAN_INPUT)
+    keyboardDriver = scanner.scan(&pagerInputController);
+#else
     keyboardDriver = scanner.scan();
+#endif
     if (keyboardDriver)
         keyboardDriver->init();
 #if LV_USE_LIBINPUT

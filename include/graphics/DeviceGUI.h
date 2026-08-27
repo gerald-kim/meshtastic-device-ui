@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+#if defined(T_LORA_PAGER) || defined(MESHTASTIC_KOREAN_INPUT)
+#include "input/TLoraPagerInputController.h"
+#endif
+
 class DisplayDriverConfig;
 class DisplayDriver;
 class InputDriver;
@@ -23,14 +27,22 @@ class DeviceGUI
     // called to inform view to do screen blanking
     virtual void blankScreen(bool enable) {}
     // called when display (driver) is doing screen blanking
-    virtual void screenSaving(bool enabled){};
+    virtual void screenSaving(bool enabled) {};
     // return true if screen view is locked
     virtual bool isScreenLocked(void) { return false; };
 
     DisplayDriver *getDisplayDriver(void) const { return displaydriver; }
     InputDriver *getInputDriver(void) const { return inputdriver; }
 
+#if defined(T_LORA_PAGER) || defined(MESHTASTIC_KOREAN_INPUT)
+    void setTLoraPagerActionSink(TLoraPagerActionSink *sink) { pagerInputController.setSink(sink); }
+    TLoraPagerInputController &getTLoraPagerInputController() { return pagerInputController; }
+#endif
+
   protected:
     DisplayDriver *displaydriver;
     InputDriver *inputdriver;
+#if defined(T_LORA_PAGER) || defined(MESHTASTIC_KOREAN_INPUT)
+    TLoraPagerInputController pagerInputController;
+#endif
 };
