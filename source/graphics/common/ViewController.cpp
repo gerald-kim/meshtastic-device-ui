@@ -4,6 +4,8 @@
 #include "util/ILog.h"
 #include "util/LogMessage.h"
 #include <algorithm>
+#include <array>
+#include <cstring>
 
 #if defined(ARCH_PORTDUINO)
 #include "PortduinoFS.h"
@@ -927,7 +929,15 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
     case meshtastic_PortNum_DETECTION_SENSOR_APP:
     case meshtastic_PortNum_TEXT_MESSAGE_APP:
     case meshtastic_PortNum_RANGE_TEST_APP: {
-        ILOG_INFO("received text message '%s'", (const char *)p.decoded.payload.bytes);
+        const size_t payloadSize = p.decoded.payload.size;
+        if (payloadSize > messagePayloadSize) {
+            ILOG_WARN("ignoring text message with oversized payload: %u", (unsigned)payloadSize);
+            break;
+        }
+        std::array<char, messagePayloadSize + 1> text{};
+        if (payloadSize > 0)
+            memcpy(text.data(), p.decoded.payload.bytes, payloadSize);
+        ILOG_INFO("received text message '%s'", text.data());
         if (!messagesRestored && log.count() > 0) {
             // houston we have a problem! Haven't finished restoring messages incrementally while new ones come in
             if (!configCompleted) {
@@ -943,9 +953,9 @@ bool ViewController::packetReceived(const meshtastic_MeshPacket &p)
             ILOG_WARN("ignoring message with invalid channel %d", (int)p.channel);
             break;
         }
-        view->newMessage(p.from, p.to, p.channel, (const char *)p.decoded.payload.bytes, time);
-        log.write(LogMessageEnv(p.from, p.to, p.channel, time, LogMessage::eDefault, false, p.decoded.payload.size,
-                                (const uint8_t *)p.decoded.payload.bytes));
+        view->newMessage(p.from, p.to, p.channel, text.data(), time);
+        log.write(
+            LogMessageEnv(p.from, p.to, p.channel, time, LogMessage::eDefault, false, payloadSize, p.decoded.payload.bytes));
         break;
     }
     case meshtastic_PortNum_POSITION_APP: {

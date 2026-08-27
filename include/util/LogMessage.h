@@ -28,7 +28,9 @@ struct LogMessageHeader : public ILogEntry {
  * @brief Structure for storing message logs containing the actual payload
  */
 struct LogMessage : public LogMessageHeader {
-    uint8_t bytes[messagePayloadSize];
+    // The serialized payload is still at most 233 bytes. The extra byte is an
+    // in-memory terminator for display APIs that consume C strings.
+    uint8_t bytes[messagePayloadSize + 1];
 };
 
 /**
@@ -42,7 +44,8 @@ class LogMessageEnv : public LogMessage
     LogMessageEnv(uint32_t _from, uint32_t _to, uint16_t _ch, time_t _time, MsgStatus _status, bool _trashFlag, uint32_t _len,
                   const uint8_t *msg)
     {
-        assert(_len < messagePayloadSize);
+        assert(_len <= messagePayloadSize);
+        assert(_len == 0 || msg != nullptr);
         _size = (uint16_t)_len;
         time = _time;
         from = _from;
@@ -51,7 +54,9 @@ class LogMessageEnv : public LogMessage
         status = _status;
         trashFlag = _trashFlag;
         reserved = 0;
-        memcpy(bytes, msg, _len);
+        if (_len > 0)
+            memcpy(bytes, msg, _len);
+        bytes[_len] = 0;
     }
 
     size_t size(void) const override { return sizeof(LogMessageHeader) - 8 + _size; }
@@ -63,14 +68,22 @@ class LogMessageEnv : public LogMessage
 
     virtual size_t deserialize(std::function<size_t(uint8_t *, size_t)> read) override
     {
-        size_t len = read((uint8_t *)&_size, sizeof(LogMessageHeader) - 8);
-        if (len && _size < messagePayloadSize) {
-            len += read(bytes, _size);
-            bytes[_size] = 0;
-        } else {
+        constexpr size_t headerSize = sizeof(LogMessageHeader) - 8;
+        const size_t headerRead = read((uint8_t *)&_size, headerSize);
+        if (headerRead != headerSize || _size > messagePayloadSize) {
             _size = 0;
             bytes[0] = 0;
+            return 0;
         }
-        return len;
+
+        const size_t payloadRead = _size == 0 ? 0 : read(bytes, _size);
+        if (payloadRead != _size) {
+            _size = 0;
+            bytes[0] = 0;
+            return 0;
+        }
+
+        bytes[_size] = 0;
+        return headerRead + payloadRead;
     }
 };
