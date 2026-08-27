@@ -8,6 +8,9 @@
 #include "graphics/common/ViewController.h"
 #include "graphics/driver/DisplayDriver.h"
 #include "graphics/driver/DisplayDriverFactory.h"
+#if defined(MESHTASTIC_KOREAN_INPUT)
+#include "graphics/fonts/HangulFont.h"
+#endif
 #include "graphics/map/AsyncTileService.h"
 #include "graphics/map/CURLService.h"
 #include "graphics/map/MapPanel.h"
@@ -16,6 +19,9 @@
 #include "graphics/view/TFT/Themes.h"
 #include "images.h"
 #include "input/InputDriver.h"
+#if defined(ARCH_PORTDUINO) && defined(MESHTASTIC_KOREAN_INPUT)
+#include "input/TLoraPagerInputReplay.h"
+#endif
 #include "lv_i18n.h"
 #include "lvgl_private.h"
 #include "styles.h"
@@ -27,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iomanip>
@@ -75,6 +82,26 @@ LV_IMAGE_DECLARE(node_location_pin24_image);
 #define LV_COLOR_HEX(C) {.blue = (C >> 0) & 0xff, .green = (C >> 8) & 0xff, .red = (C >> 16) & 0xff}
 
 #define VALID_TIME(T) (T > 1000000 && T < UINT32_MAX)
+
+#if defined(ARCH_PORTDUINO) && defined(MESHTASTIC_KOREAN_INPUT)
+namespace
+{
+uint32_t countLabelsContaining(lv_obj_t *root, const char *expected)
+{
+    uint32_t matches = 0;
+    if (lv_obj_check_type(root, &lv_label_class)) {
+        const char *text = lv_label_get_text(root);
+        if (text && expected && std::strstr(text, expected))
+            ++matches;
+    }
+
+    const uint32_t children = lv_obj_get_child_count(root);
+    for (uint32_t i = 0; i < children; ++i)
+        matches += countLabelsContaining(lv_obj_get_child(root, i), expected);
+    return matches;
+}
+} // namespace
+#endif
 
 constexpr lv_color_t colorRed = LV_COLOR_HEX(0xff5555);
 constexpr lv_color_t colorDarkRed = LV_COLOR_HEX(0xa70a0a);
@@ -360,6 +387,11 @@ void TFTView_480x222::init_screens(void)
     state = MeshtasticView::eInitScreens;
     ui_init();
     apply_hotfix();
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    messageInputPresenter = new MessageInputPresenter(objects.message_input_area, objects.message_input_mode_label);
+    setTLoraPagerActionSink(this);
+    renderMessageInput();
+#endif
 
     activeMsgContainer = objects.messages_container;
     // setup the two channel label panels with arrays that allow indexing
@@ -599,6 +631,13 @@ void TFTView_480x222::apply_hotfix(void)
     lv_obj_clear_flag(objects.detector_start_button_panel, LV_OBJ_FLAG_HIDDEN);
 
     lv_textarea_set_placeholder_text(objects.message_input_area, _("Enter Text ..."));
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    const lv_font_t *messageInputFont = withHangulFallback(&ui_font_montserrat_14);
+    lv_obj_set_style_text_font(objects.message_input_area, messageInputFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(lv_textarea_get_label(objects.message_input_area), messageInputFont,
+                               LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(objects.message_input_mode_label, messageInputFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
     lv_textarea_set_placeholder_text(objects.nodes_filter_name_area, _("!Enter Filter ..."));
     lv_textarea_set_placeholder_text(objects.nodes_hl_name_area, _("Enter Filter ..."));
 
@@ -1597,6 +1636,74 @@ void TFTView_480x222::ui_event_BlankScreenButton(lv_event_t *e)
     }
 }
 
+#if defined(MESHTASTIC_KOREAN_INPUT)
+bool TFTView_480x222::isTLoraPagerTextInputActive() const
+{
+    return activePanel == objects.messages_panel && lv_obj_has_state(objects.message_input_area, LV_STATE_FOCUSED);
+}
+
+void TFTView_480x222::renderMessageInput()
+{
+    if (!messageInputPresenter)
+        return;
+    messageInputRendering = true;
+    messageInputPresenter->render(messageInputSession);
+    messageInputRendering = false;
+}
+
+void TFTView_480x222::submitMessageInput()
+{
+    messageInputSession.prepareSubmit();
+    auto view = messageInputSession.viewState();
+    const size_t length = strlen(view.text.data());
+    if (length == 0) {
+        renderMessageInput();
+        return;
+    }
+
+    if (view.text[length - 1] == ' ') {
+        const char lineBreak = CR_REPLACEMENT;
+        messageInputSession.insertUtf8(&lineBreak, 1);
+        renderMessageInput();
+        return;
+    }
+
+    std::array<char, MessageTextController::MAX_PAYLOAD_BYTES + 1> message = view.text;
+    handleAddMessage(message.data());
+    messageInputSession.clearAfterSubmit();
+    renderMessageInput();
+    if (!lv_obj_has_flag(objects.keyboard, LV_OBJ_FLAG_HIDDEN))
+        hideKeyboard(objects.messages_panel);
+    lv_group_focus_obj(objects.message_input_area);
+}
+
+bool TFTView_480x222::handleTLoraPagerAction(const TLoraPagerKeyPolicy::Action &action)
+{
+    if (!isTLoraPagerTextInputActive() || !action.pressed)
+        return false;
+
+    using Kind = TLoraPagerKeyPolicy::ActionKind;
+    switch (action.kind) {
+    case Kind::Character:
+        messageInputSession.insertAscii(static_cast<uint8_t>(action.codepoint));
+        break;
+    case Kind::TextBackspace:
+        messageInputSession.backspace();
+        break;
+    case Kind::ToggleInputMode:
+        messageInputSession.toggleMode();
+        break;
+    case Kind::Submit:
+        submitMessageInput();
+        return true;
+    default:
+        return false;
+    }
+    renderMessageInput();
+    return true;
+}
+#endif
+
 void TFTView_480x222::ui_event_KeyboardButton(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -1673,6 +1780,33 @@ void TFTView_480x222::ui_event_Keyboard(lv_event_t *e)
     if (event_code == LV_EVENT_CLICKED) {
         lv_obj_t *kb = lv_event_get_target_obj(e);
         uint32_t btn_id = lv_keyboard_get_selected_button(kb);
+#if defined(MESHTASTIC_KOREAN_INPUT)
+        if (THIS->activePanel == objects.messages_panel) {
+            const char *buttonText = lv_keyboard_get_button_text(kb, btn_id);
+            if (!buttonText)
+                return;
+            if (strcmp(buttonText, LV_SYMBOL_BACKSPACE) == 0) {
+                THIS->messageInputSession.backspace();
+            } else if (strcmp(buttonText, LV_SYMBOL_LEFT) == 0) {
+                THIS->messageInputSession.moveCursorLeft();
+            } else if (strcmp(buttonText, LV_SYMBOL_RIGHT) == 0) {
+                THIS->messageInputSession.moveCursorRight();
+            } else if (strcmp(buttonText, LV_SYMBOL_OK) == 0 || strcmp(buttonText, "Enter") == 0 ||
+                       strcmp(buttonText, LV_SYMBOL_NEW_LINE) == 0) {
+                THIS->submitMessageInput();
+                return;
+            } else if (strcmp(buttonText, LV_SYMBOL_CLOSE) == 0 || strcmp(buttonText, LV_SYMBOL_KEYBOARD) == 0) {
+                lv_keyboard_set_popovers(objects.keyboard, !lv_keyboard_get_popovers(kb));
+                return;
+            } else if (strcmp(buttonText, "1#") == 0 || strcmp(buttonText, "abc") == 0 || strcmp(buttonText, "ABC") == 0) {
+                return;
+            } else {
+                THIS->messageInputSession.insertUtf8(buttonText, strlen(buttonText));
+            }
+            THIS->renderMessageInput();
+            return;
+        }
+#endif
 
         switch (btn_id) {
         case 22: { // enter (filtered out by one-liner text input area, so we replace it)
@@ -1710,6 +1844,56 @@ void TFTView_480x222::ui_event_Keyboard(lv_event_t *e)
 void TFTView_480x222::ui_event_message_ready(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    if (THIS->messageInputRendering)
+        return;
+
+    if (event_code == LV_EVENT_INSERT) {
+        const char *inserted = static_cast<const char *>(lv_event_get_param(e));
+        lv_textarea_set_insert_replace(objects.message_input_area, "");
+        if (inserted && inserted[0] != '\r' && inserted[0] != '\n')
+            THIS->messageInputSession.insertUtf8(inserted, strlen(inserted));
+        THIS->renderMessageInput();
+        return;
+    }
+
+    if (event_code == LV_EVENT_VALUE_CHANGED) {
+        const char *text = lv_textarea_get_text(objects.message_input_area);
+        const uint32_t cursor = lv_textarea_get_cursor_pos(objects.message_input_area);
+        THIS->messageInputSession.replaceUtf8(text, strlen(text));
+        THIS->messageInputSession.setCursorCodepoint(cursor);
+        THIS->renderMessageInput();
+        return;
+    }
+
+    if (event_code == LV_EVENT_RELEASED) {
+        THIS->messageInputSession.setCursorCodepoint(lv_textarea_get_cursor_pos(objects.message_input_area));
+        THIS->renderMessageInput();
+        return;
+    }
+
+    if (event_code == LV_EVENT_DEFOCUSED) {
+        THIS->messageInputSession.flush();
+        THIS->renderMessageInput();
+        return;
+    }
+
+    if (event_code == LV_EVENT_KEY) {
+        uint32_t *key = static_cast<uint32_t *>(lv_event_get_param(e));
+        if (key && *key == '\r') {
+            THIS->submitMessageInput();
+            return;
+        }
+        if (key && (*key == LV_KEY_LEFT || *key == LV_KEY_RIGHT || *key == LV_KEY_HOME || *key == LV_KEY_END)) {
+            THIS->messageInputSession.setCursorCodepoint(lv_textarea_get_cursor_pos(objects.message_input_area));
+            THIS->renderMessageInput();
+        }
+        return;
+    }
+
+    if (event_code == LV_EVENT_READY)
+        THIS->submitMessageInput();
+#else
     if (event_code == LV_EVENT_KEY) {
         // LVGL's X11 driver maps only keypad enter to LV_KEY_ENTER; the main Return
         // key arrives as raw '\r' and is silently dropped by the one-line textarea.
@@ -1735,6 +1919,7 @@ void TFTView_480x222::ui_event_message_ready(lv_event_t *e)
             }
         }
     }
+#endif
 }
 
 // basic settings buttons
@@ -4603,7 +4788,12 @@ void TFTView_480x222::addMessage(lv_obj_t *container, uint32_t msgTime, uint32_t
 
     lv_obj_t *textLabel = lv_label_create(hiddenPanel);
     // calculate expected size of text bubble, to make it look nicer
-    lv_coord_t width = lv_txt_get_width(buf, strlen(buf), &ui_font_montserrat_12, 0);
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    const lv_font_t *messageFont = withHangulFallback(&ui_font_montserrat_12);
+#else
+    const lv_font_t *messageFont = &ui_font_montserrat_12;
+#endif
+    lv_coord_t width = lv_txt_get_width(buf, strlen(buf), messageFont, 0);
     lv_obj_set_width(textLabel, std::max<int32_t>(std::min<int32_t>(width, 200) + 10, 40));
     lv_obj_set_height(textLabel, LV_SIZE_CONTENT);
     lv_obj_set_y(textLabel, 0);
@@ -4611,6 +4801,9 @@ void TFTView_480x222::addMessage(lv_obj_t *container, uint32_t msgTime, uint32_t
     lv_label_set_text(textLabel, buf);
 
     add_style_chat_message_style(textLabel);
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    lv_obj_set_style_text_font(textLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
 
     lv_obj_scroll_to_view(hiddenPanel, LV_ANIM_ON);
     lv_obj_move_foreground(objects.message_input_area);
@@ -6592,12 +6785,20 @@ void TFTView_480x222::newMessage(uint32_t nodeNum, lv_obj_t *container, uint8_t 
 
     lv_obj_t *msgLabel = lv_label_create(hiddenPanel);
     // calculate expected size of text bubble, to make it look nicer
-    lv_coord_t width = lv_txt_get_width(msg, strlen(msg), &ui_font_montserrat_14, 0);
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    const lv_font_t *messageFont = withHangulFallback(&ui_font_montserrat_14);
+#else
+    const lv_font_t *messageFont = &ui_font_montserrat_14;
+#endif
+    lv_coord_t width = lv_txt_get_width(msg, strlen(msg), messageFont, 0);
     lv_obj_set_width(msgLabel, std::max<int32_t>(std::min<int32_t>((int32_t)(width), 160) + 10, 40));
     lv_obj_set_height(msgLabel, LV_SIZE_CONTENT);
     lv_obj_set_align(msgLabel, LV_ALIGN_LEFT_MID);
     lv_label_set_text(msgLabel, msg);
     add_style_new_message_style(msgLabel);
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    lv_obj_set_style_text_font(msgLabel, messageFont, LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
     lv_obj_add_flag(msgLabel, LV_OBJ_FLAG_CLICK_FOCUSABLE);
     lv_obj_add_event_cb(msgLabel, ui_event_chatNodeButton, LV_EVENT_CLICKED, (void *)nodeNum);
 
@@ -6806,6 +7007,91 @@ void TFTView_480x222::notifyMessagesRestored(void)
     updateActiveChats();
     updateNodesFiltered(true);
 
+#if defined(ARCH_PORTDUINO) && defined(MESHTASTIC_KOREAN_INPUT)
+    const char *layout = std::getenv("MESHTASTIC_LAYOUT_SCREEN");
+    const char *fixture = std::getenv("MESHTASTIC_TLORA_PAGER_RAW_REPLAY");
+    const char *restored = std::getenv("MESHTASTIC_VERIFY_RESTORED_MESSAGE");
+    if ((layout && std::strcmp(layout, "messages") == 0) || fixture || restored) {
+        showMessages(static_cast<uint8_t>(0));
+        lv_group_focus_obj(objects.message_input_area);
+        // A headless Xvfb run has no libinput device and therefore no LVGL
+        // group to assign focus state. Raw replay still models a focused
+        // physical Messages textarea.
+        if (fixture)
+            lv_obj_add_state(objects.message_input_area, LV_STATE_FOCUSED);
+    }
+
+    if (fixture) {
+        TLoraPagerInputReplay replay;
+        const bool loaded = replay.load(fixture);
+        const auto result =
+            loaded ? replay.run(getTLoraPagerInputController(), {true, true}) : TLoraPagerInputReplay::RunResult{};
+        const auto draft = messageInputSession.viewState();
+        const bool textMatches = !replay.hasExpectedText() || replay.expectedText() == draft.text.data();
+        const bool modeMatches = !replay.hasExpectedMode() || replay.expectsKoreanMode() == messageInputSession.isKoreanMode();
+        const uint32_t messageMatches =
+            replay.hasExpectedMessage() ? countLabelsContaining(activeMsgContainer, replay.expectedMessage().c_str()) : 0;
+        const bool messageMatchesOnce = !replay.hasExpectedMessage() || messageMatches == 1;
+        const bool passed =
+            loaded && result.valid && result.events == result.consumed && textMatches && modeMatches && messageMatchesOnce;
+        ILOG_INFO("PAGER_KO_REPLAY result=%s events=%u consumed=%u bytes=%u mode=%s text=%s message_matches=%u",
+                  passed ? "PASS" : "FAIL", (unsigned)result.events, (unsigned)result.consumed,
+                  (unsigned)messageInputSession.text().payloadSize(), messageInputSession.isKoreanMode() ? "korean" : "english",
+                  draft.text.data(), (unsigned)messageMatches);
+    }
+
+    if (restored && restored[0]) {
+        struct ReopenState {
+            uint8_t stage = 0;
+            lv_obj_t *chatButton = nullptr;
+            lv_obj_t *messageContainer = nullptr;
+            uint32_t children = 0;
+            const char *expected = nullptr;
+        };
+        static ReopenState reopen;
+        reopen = {};
+        reopen.expected = restored;
+        lv_timer_create(
+            [](lv_timer_t *timer) {
+                auto *view = static_cast<TFTView_480x222 *>(lv_timer_get_user_data(timer));
+                switch (reopen.stage++) {
+                case 0:
+                    lv_obj_send_event(objects.home_button, LV_EVENT_CLICKED, nullptr);
+                    lv_obj_send_event(objects.messages_button, LV_EVENT_CLICKED, nullptr);
+                    break;
+                case 1: {
+                    const auto chat = view->chats.find(0);
+                    if (chat == view->chats.end()) {
+                        ILOG_INFO("PAGER_KO_REOPEN result=FAIL reason=missing-chat");
+                        lv_timer_delete(timer);
+                        return;
+                    }
+                    reopen.chatButton = chat->second;
+                    lv_obj_send_event(reopen.chatButton, LV_EVENT_CLICKED, nullptr);
+                    break;
+                }
+                case 2:
+                    reopen.messageContainer = view->activeMsgContainer;
+                    reopen.children = lv_obj_get_child_count(view->activeMsgContainer);
+                    lv_obj_send_event(objects.messages_button, LV_EVENT_CLICKED, nullptr);
+                    break;
+                default: {
+                    lv_obj_send_event(reopen.chatButton, LV_EVENT_CLICKED, nullptr);
+                    const uint32_t matches = countLabelsContaining(view->activeMsgContainer, reopen.expected);
+                    const uint32_t children = lv_obj_get_child_count(view->activeMsgContainer);
+                    const bool passed = view->activePanel == objects.messages_panel &&
+                                        view->activeMsgContainer == reopen.messageContainer && children == reopen.children &&
+                                        matches == 1;
+                    ILOG_INFO("PAGER_KO_REOPEN result=%s matches=%u same_container=%d children=%u", passed ? "PASS" : "FAIL",
+                              (unsigned)matches, view->activeMsgContainer == reopen.messageContainer, (unsigned)children);
+                    lv_timer_delete(timer);
+                    break;
+                }
+                }
+            },
+            250, this);
+    }
+#endif
 }
 
 /**
@@ -6955,7 +7241,11 @@ void TFTView_480x222::showKeyboard(lv_obj_t *textArea)
             lv_obj_set_pos(objects.keyboard, 0, text_coords.y2 + 3);
         }
     }
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    lv_keyboard_set_textarea(objects.keyboard, textArea == objects.message_input_area ? nullptr : textArea);
+#else
     lv_keyboard_set_textarea(objects.keyboard, textArea);
+#endif
 }
 
 void TFTView_480x222::hideKeyboard(lv_obj_t *panel)

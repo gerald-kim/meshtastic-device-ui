@@ -44,6 +44,8 @@ void checkPair(TLoraPagerKeyPolicy &policy, uint8_t key, uint32_t &at, Context c
 class RecordingSink : public TLoraPagerActionSink
 {
   public:
+    bool isTLoraPagerTextInputActive() const override { return textInputActive; }
+
     bool handleTLoraPagerAction(const Action &action) override
     {
         calls++;
@@ -52,6 +54,7 @@ class RecordingSink : public TLoraPagerActionSink
     }
 
     bool accept = true;
+    bool textInputActive = false;
     unsigned calls = 0;
     Action last{};
 };

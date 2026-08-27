@@ -1,0 +1,38 @@
+# Shift then Space toggles En -> Korean without inserting a space.
+edge 10 press 29
+edge 11 release 29
+edge 12 press 31
+edge 13 release 31
+# ekfrrhrl rkqtdl -> 닭고기 값이
+edge 20 press 3
+edge 21 release 3
+edge 22 press 18
+edge 23 release 18
+edge 24 press 14
+edge 25 release 14
+edge 26 press 4
+edge 27 release 4
+edge 28 press 4
+edge 29 release 4
+edge 30 press 16
+edge 31 release 16
+edge 32 press 4
+edge 33 release 4
+edge 34 press 19
+edge 35 release 19
+edge 36 press 31
+edge 37 release 31
+edge 38 press 4
+edge 39 release 4
+edge 40 press 18
+edge 41 release 18
+edge 42 press 1
+edge 43 release 1
+edge 44 press 5
+edge 45 release 5
+edge 46 press 13
+edge 47 release 13
+edge 48 press 19
+edge 49 release 19
+expect_text_utf8 닭고기 값이
+expect_mode korean

@@ -9,6 +9,7 @@ class TLoraPagerActionSink
 {
   public:
     virtual ~TLoraPagerActionSink() = default;
+    virtual bool isTLoraPagerTextInputActive() const { return false; }
     virtual bool handleTLoraPagerAction(const TLoraPagerKeyPolicy::Action &action) = 0;
 };
 
@@ -30,6 +31,7 @@ class TLoraPagerInputController
     Dispatch feed(const TLoraPagerKeyPolicy::RawEvent &event, const TLoraPagerKeyPolicy::Context &context);
     Dispatch routeEncoder(int32_t delta, uint32_t timestampMs, const TLoraPagerKeyPolicy::Context &context);
     void reset();
+    bool isTextInputActive() const { return sink && sink->isTLoraPagerTextInputActive(); }
 
     const TLoraPagerKeyPolicy &keyPolicy() const { return policy; }
 

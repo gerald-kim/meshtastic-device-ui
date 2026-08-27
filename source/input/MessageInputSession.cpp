@@ -60,10 +60,37 @@ MessageInputSession::Result MessageInputSession::insertUtf8(const char *text, si
     if (std::strlen(terminated.data()) != length || !MessageTextController::isValidUtf8(terminated.data()))
         return Result::InvalidUtf8;
 
-    const Result flushed = flush();
+    MessageInputSession candidate = *this;
+    const Result flushed = candidate.flush();
     if (flushed == Result::PayloadFull || flushed == Result::InvalidUtf8)
         return flushed;
-    return translate(controller.commitPreeditAndInsert(terminated.data()));
+    const auto inserted = candidate.controller.commitPreeditAndInsert(terminated.data());
+    if (inserted == MessageTextController::Result::Applied || inserted == MessageTextController::Result::NoChange)
+        *this = candidate;
+    return translate(inserted);
+}
+
+MessageInputSession::Result MessageInputSession::replaceUtf8(const char *text, size_t length)
+{
+    if (!text || length > MessageTextController::MAX_PAYLOAD_BYTES)
+        return length > MessageTextController::MAX_PAYLOAD_BYTES ? Result::PayloadFull : Result::InvalidUtf8;
+
+    std::array<char, MessageTextController::MAX_PAYLOAD_BYTES + 1> terminated{};
+    std::memcpy(terminated.data(), text, length);
+    if (std::strlen(terminated.data()) != length || !MessageTextController::isValidUtf8(terminated.data()))
+        return Result::InvalidUtf8;
+
+    MessageTextController candidate;
+    const auto result = candidate.commitPreeditAndInsert(terminated.data());
+    if (result == MessageTextController::Result::PayloadFull)
+        return Result::PayloadFull;
+    if (result == MessageTextController::Result::InvalidUtf8)
+        return Result::InvalidUtf8;
+
+    const auto previous = viewState();
+    composer.reset();
+    controller = candidate;
+    return std::strcmp(previous.text.data(), terminated.data()) == 0 && !previous.hasPreedit ? Result::NoChange : Result::Applied;
 }
 
 MessageInputSession::Result MessageInputSession::backspace()

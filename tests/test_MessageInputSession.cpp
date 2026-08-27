@@ -97,6 +97,8 @@ TEST_CASE("220 byte outbound budget is transactional")
     checkText(session, prefix217 + "간", true);
     CHECK(session.insertAscii('r') == Result::PayloadFull);
     checkText(session, prefix217 + "간", true);
+    CHECK(session.insertUtf8("x", 1) == Result::PayloadFull);
+    checkText(session, prefix217 + "간", true);
 }
 
 TEST_CASE("UTF-8 insertion cursor deletion and malformed input preserve invariants")
@@ -111,6 +113,21 @@ TEST_CASE("UTF-8 insertion cursor deletion and malformed input preserve invarian
     const char malformed[] = {static_cast<char>(0xe3), static_cast<char>(0x84)};
     CHECK(session.insertUtf8(malformed, sizeof(malformed)) == Result::InvalidUtf8);
     checkText(session, "A가B");
+}
+
+TEST_CASE("external English input can replace a draft without bypassing the byte budget")
+{
+    MessageInputSession session;
+    REQUIRE(session.toggleMode() == Result::Applied);
+    REQUIRE(session.replaceUtf8("A가😀B", 9) == Result::Applied);
+    CHECK(session.isKoreanMode());
+    checkText(session, "A가😀B");
+
+    const std::string full(220, 'x');
+    CHECK(session.replaceUtf8(full.data(), full.size()) == Result::Applied);
+    const std::string tooLong(221, 'x');
+    CHECK(session.replaceUtf8(tooLong.data(), tooLong.size()) == Result::PayloadFull);
+    checkText(session, full);
 }
 
 TEST_CASE("representative Korean payload remains NFC UTF-8")

@@ -21,6 +21,7 @@ class MessageInputSession
 
     Result insertAscii(uint8_t ascii);
     Result insertUtf8(const char *text, size_t length);
+    Result replaceUtf8(const char *text, size_t length);
     Result backspace();
     Result moveCursorLeft();
     Result moveCursorRight();

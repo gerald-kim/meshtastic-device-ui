@@ -242,6 +242,7 @@ void TLoraPagerKeyboardInputDriver::init(void)
 
 void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *indev, lv_indev_data_t *data)
 {
+    (void)indev;
     data->state = LV_INDEV_STATE_RELEASED;
     data->key = 0;
 
@@ -255,9 +256,7 @@ void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *in
     if ((count & 0x0f) == 1)
         tca8418WriteRegister(address, TCA8418_REG_INT_STAT, 0x01);
 
-    lv_group_t *group = lv_indev_get_group(indev);
-    lv_obj_t *focused = group ? lv_group_get_focused(group) : nullptr;
-    const bool textInput = focused && lv_obj_check_type(focused, &lv_textarea_class);
+    const bool textInput = controller.isTextInputActive();
     const TLoraPagerKeyPolicy::RawEvent raw{static_cast<uint8_t>(fifoEvent & 0x7f), (fifoEvent & 0x80) != 0, millis()};
     const auto dispatch = controller.feed(raw, {true, textInput});
     if (dispatch.consumed || !dispatch.policy.emit)

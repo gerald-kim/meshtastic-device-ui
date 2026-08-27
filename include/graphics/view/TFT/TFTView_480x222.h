@@ -2,6 +2,11 @@
 
 #include "graphics/common/MeshtasticView.h"
 #include "meshtastic/clientonly.pb.h"
+#if defined(MESHTASTIC_KOREAN_INPUT)
+#include "input/MessageInputPresenter.h"
+#include "input/MessageInputSession.h"
+#include "input/TLoraPagerInputController.h"
+#endif
 #include <set>
 
 class MapPanel;
@@ -13,6 +18,10 @@ class MapPanel;
  *       a singleton with static callback members
  */
 class TFTView_480x222 : public MeshtasticView
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    ,
+                        public TLoraPagerActionSink
+#endif
 {
   public:
     void init(IClientBase *client) override;
@@ -270,6 +279,13 @@ class TFTView_480x222 : public MeshtasticView
     void updateLocationMap(uint32_t objects);
     void attribution(std::string url);
 
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    bool isTLoraPagerTextInputActive() const override;
+    bool handleTLoraPagerAction(const TLoraPagerKeyPolicy::Action &action) override;
+    void renderMessageInput();
+    void submitMessageInput();
+#endif
+
     // response callbacks
     void onTextMessageCallback(const ResponseHandler::Request &, ResponseHandler::EventType, int32_t);
     void onPositionCallback(const ResponseHandler::Request &, ResponseHandler::EventType, int32_t);
@@ -456,4 +472,9 @@ class TFTView_480x222 : public MeshtasticView
     };
 
     meshtastic_DeviceProfile_full db{}; // full copy of the node's configuration db (except nodeinfos) plus ui data
+#if defined(MESHTASTIC_KOREAN_INPUT)
+    MessageInputSession messageInputSession;
+    MessageInputPresenter *messageInputPresenter = nullptr;
+    bool messageInputRendering = false;
+#endif
 };
