@@ -125,6 +125,15 @@ void initPagerKeyFocusStyle(void)
         lv_group_set_focus_cb(group, pagerKeyFocusChanged);
 }
 
+lv_obj_t *focusedPagerTextArea(void)
+{
+    lv_group_t *group = lv_group_get_default();
+    lv_obj_t *focused = group ? lv_group_get_focused(group) : nullptr;
+    if (!focused || !lv_obj_check_type(focused, &lv_textarea_class) || !lv_obj_is_visible(focused))
+        return nullptr;
+    return focused;
+}
+
 #if defined(ARCH_PORTDUINO)
 uint32_t countLabelsContaining(lv_obj_t *root, const char *expected)
 {
@@ -1683,8 +1692,9 @@ bool TFTView_480x222::isTLoraPagerTextInputActive() const
 {
     // The physical keyboard is the primary composer on the Pager.  Treat the
     // whole Messages panel as text-entry context so the first character is not
-    // silently sent to whichever navigation button still owns LVGL focus.
-    return activePanel == objects.messages_panel;
+    // silently sent to whichever navigation button still owns LVGL focus. For
+    // settings forms, use the visible textarea that currently owns focus.
+    return activePanel == objects.messages_panel || focusedPagerTextArea() != nullptr;
 }
 
 void TFTView_480x222::renderMessageInput()
@@ -1724,31 +1734,57 @@ void TFTView_480x222::submitMessageInput()
 
 bool TFTView_480x222::handleTLoraPagerAction(const TLoraPagerKeyPolicy::Action &action)
 {
-    if (!isTLoraPagerTextInputActive() || !action.pressed)
+    if (!action.pressed)
+        return false;
+
+    const bool messageInput = activePanel == objects.messages_panel;
+    lv_obj_t *textArea = messageInput ? objects.message_input_area : focusedPagerTextArea();
+    if (!textArea)
         return false;
 
     using Kind = TLoraPagerKeyPolicy::ActionKind;
+    if (messageInput) {
+        switch (action.kind) {
+        case Kind::Character:
+            lv_group_focus_obj(textArea);
+            messageInputSession.insertAscii(static_cast<uint8_t>(action.codepoint));
+            break;
+        case Kind::TextBackspace:
+            lv_group_focus_obj(textArea);
+            messageInputSession.backspace();
+            break;
+        case Kind::ToggleInputMode:
+            lv_group_focus_obj(textArea);
+            messageInputSession.toggleMode();
+            break;
+        case Kind::Submit:
+            submitMessageInput();
+            return true;
+        default:
+            return false;
+        }
+        renderMessageInput();
+        return true;
+    }
+
+    lv_group_focus_obj(textArea);
     switch (action.kind) {
     case Kind::Character:
-        lv_group_focus_obj(objects.message_input_area);
-        messageInputSession.insertAscii(static_cast<uint8_t>(action.codepoint));
-        break;
+        lv_textarea_add_char(textArea, action.codepoint);
+        return true;
     case Kind::TextBackspace:
-        lv_group_focus_obj(objects.message_input_area);
-        messageInputSession.backspace();
-        break;
-    case Kind::ToggleInputMode:
-        lv_group_focus_obj(objects.message_input_area);
-        messageInputSession.toggleMode();
-        break;
+        lv_textarea_delete_char(textArea);
+        return true;
     case Kind::Submit:
-        submitMessageInput();
+        lv_obj_send_event(textArea, LV_EVENT_READY, nullptr);
+        return true;
+    case Kind::ToggleInputMode:
+        // Korean composition is currently exposed only in the Messages editor.
+        // Consume Shift+Space here so it cannot insert a stray character.
         return true;
     default:
         return false;
     }
-    renderMessageInput();
-    return true;
 }
 #endif
 
