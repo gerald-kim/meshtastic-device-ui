@@ -100,14 +100,9 @@ void initPagerKeyFocusStyle(lv_obj_t *root)
 {
     if (!pagerKeyFocusStyleInitialized) {
         lv_style_init(&pagerKeyFocusStyle);
-        lv_style_set_bg_color(&pagerKeyFocusStyle, lv_color_hex(0x216ad8));
-        lv_style_set_bg_opa(&pagerKeyFocusStyle, LV_OPA_COVER);
-        lv_style_set_bg_image_recolor(&pagerKeyFocusStyle, lv_color_white());
-        lv_style_set_bg_image_recolor_opa(&pagerKeyFocusStyle, LV_OPA_COVER);
-        lv_style_set_text_color(&pagerKeyFocusStyle, lv_color_white());
-        lv_style_set_border_color(&pagerKeyFocusStyle, lv_color_hex(0x8ab4f8));
+        lv_style_set_border_color(&pagerKeyFocusStyle, lv_color_hex(0x2979ff));
         lv_style_set_border_opa(&pagerKeyFocusStyle, LV_OPA_COVER);
-        lv_style_set_border_width(&pagerKeyFocusStyle, 2);
+        lv_style_set_border_width(&pagerKeyFocusStyle, 3);
         lv_style_set_border_side(&pagerKeyFocusStyle, LV_BORDER_SIDE_FULL);
         lv_style_set_outline_width(&pagerKeyFocusStyle, 0);
         pagerKeyFocusStyleInitialized = true;
