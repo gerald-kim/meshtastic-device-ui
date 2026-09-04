@@ -2,10 +2,12 @@
 
 #include "input/InputDriver.h"
 
+class TLoraPagerInputController;
+
 class EncoderInputDriver : public InputDriver
 {
   public:
-    EncoderInputDriver(void);
+    explicit EncoderInputDriver(TLoraPagerInputController *pagerController = nullptr);
 
     virtual void init(void) override;
     virtual ~EncoderInputDriver(void) {}
@@ -22,4 +24,7 @@ class EncoderInputDriver : public InputDriver
     static volatile EncoderActionType action;
 
     static void encoder_read(lv_indev_t *indev, lv_indev_data_t *data);
+
+  private:
+    TLoraPagerInputController *pagerController;
 };

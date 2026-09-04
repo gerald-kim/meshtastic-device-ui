@@ -39,7 +39,11 @@ DeviceGUI::DeviceGUI(const DisplayDriverConfig *cfg, DisplayDriver *driver) : di
 //        linuxInputDriver = InputDriver::instance();
 #else
 #if defined(INPUTDRIVER_ENCODER_TYPE)
+#if defined(T_LORA_PAGER) || defined(MESHTASTIC_KOREAN_INPUT)
+    encoderDriver = new EncoderInputDriver(&pagerInputController);
+#else
     encoderDriver = new EncoderInputDriver;
+#endif
 #endif
 #if defined(INPUTDRIVER_MATRIX_TYPE)
     keyMatrixDriver = new KeyMatrixInputDriver;

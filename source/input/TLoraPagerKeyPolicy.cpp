@@ -23,7 +23,7 @@ TLoraPagerKeyPolicy::Result TLoraPagerKeyPolicy::makeResult(uint8_t rawKeyCode, 
     Result result{};
     result.emit = active.kind != ActionKind::None && active.kind != ActionKind::Consumed;
     result.consume = active.kind != ActionKind::None;
-    result.action = {active.kind, active.codepoint, rawKeyCode, pressed, active.appliedModifier};
+    result.action = {active.kind, active.codepoint, rawKeyCode, pressed, active.appliedModifier, active.encoderDelta};
     result.latchedModifier = latchedModifier;
     result.symHeld = symPhysicalDown;
     return result;
@@ -171,6 +171,7 @@ TLoraPagerKeyPolicy::Result TLoraPagerKeyPolicy::routeEncoder(int32_t delta, uin
         symUsedForScroll = true;
         active.kind = delta < 0 ? ActionKind::ScrollUp : ActionKind::ScrollDown;
         active.appliedModifier = Modifier::Sym;
+        active.encoderDelta = delta;
     } else {
         return Result{false, false, {}, latchedModifier, symPhysicalDown};
     }

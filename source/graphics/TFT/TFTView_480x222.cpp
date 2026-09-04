@@ -1726,11 +1726,17 @@ bool TFTView_480x222::handleTLoraPagerAction(const TLoraPagerKeyPolicy::Action &
         return false;
 
     const bool messageInput = activePanel == objects.messages_panel;
+    using Kind = TLoraPagerKeyPolicy::ActionKind;
+    if (messageInput && activeMsgContainer && (action.kind == Kind::ScrollUp || action.kind == Kind::ScrollDown)) {
+        constexpr int32_t scrollStep = 48;
+        lv_obj_scroll_by(activeMsgContainer, 0, -action.encoderDelta * scrollStep, LV_ANIM_OFF);
+        return true;
+    }
+
     lv_obj_t *textArea = messageInput ? objects.message_input_area : focusedPagerTextArea();
     if (!textArea)
         return false;
 
-    using Kind = TLoraPagerKeyPolicy::ActionKind;
     if (messageInput) {
         switch (action.kind) {
         case Kind::Character:

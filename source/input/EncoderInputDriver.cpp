@@ -2,6 +2,7 @@
 
 #include "input/EncoderInputDriver.h"
 #include "Arduino.h"
+#include "input/TLoraPagerInputController.h"
 #include "util/ILog.h"
 
 #if INPUTDRIVER_ENCODER_TYPE == 1
@@ -28,7 +29,7 @@ void rotaryInterruptHandler()
 
 volatile EncoderInputDriver::EncoderActionType EncoderInputDriver::action = TB_ACTION_NONE;
 
-EncoderInputDriver::EncoderInputDriver(void) {}
+EncoderInputDriver::EncoderInputDriver(TLoraPagerInputController *pagerController) : pagerController(pagerController) {}
 
 void EncoderInputDriver::init(void)
 {
@@ -72,6 +73,7 @@ void EncoderInputDriver::init(void)
     encoder = lv_indev_create();
     lv_indev_set_type(encoder, LV_INDEV_TYPE_ENCODER);
     lv_indev_set_read_cb(encoder, encoder_read);
+    lv_indev_set_user_data(encoder, this);
 
     if (!inputGroup) {
         inputGroup = lv_group_create();
@@ -93,6 +95,16 @@ void EncoderInputDriver::encoder_read(lv_indev_t *indev, lv_indev_data_t *data)
         data->enc_diff = rotaryDelta;
         rotaryDelta = 0;
         interrupts();
+
+        auto *driver = static_cast<EncoderInputDriver *>(lv_indev_get_user_data(indev));
+        if (data->enc_diff != 0 && driver && driver->pagerController) {
+            auto &controller = *driver->pagerController;
+            const auto dispatch = controller.routeEncoder(data->enc_diff, millis(), {true, controller.isTextInputActive()});
+            if (dispatch.consumed) {
+                data->enc_diff = 0;
+                lv_display_trigger_activity(nullptr);
+            }
+        }
 #ifdef INPUTDRIVER_ENCODER_BTN
         data->key = LV_KEY_ENTER;
         if (!digitalRead(INPUTDRIVER_ENCODER_BTN))

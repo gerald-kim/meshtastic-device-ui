@@ -159,3 +159,25 @@ TEST_CASE("Pager controller consumes Shift Space without inserting a space")
     CHECK(controller.feed(Raw{31, false, 4}, text).consumed);
     CHECK(sink.calls == 1);
 }
+
+TEST_CASE("Pager controller consumes encoder movement while Sym is held")
+{
+    TLoraPagerInputController controller;
+    RecordingSink sink;
+    controller.setSink(&sink);
+    constexpr Context navigation{true, false};
+
+    CHECK(controller.feed(Raw{21, true, 1}, navigation).consumed);
+    const auto scroll = controller.routeEncoder(2, 2, navigation);
+    CHECK(scroll.consumed);
+    CHECK(sink.calls == 1);
+    CHECK(sink.last.kind == Kind::ScrollDown);
+    CHECK(sink.last.appliedModifier == Modifier::Sym);
+    CHECK(sink.last.encoderDelta == 2);
+    CHECK(controller.feed(Raw{21, false, 3}, navigation).consumed);
+    CHECK(controller.keyPolicy().modifier() == Modifier::None);
+
+    const auto focus = controller.routeEncoder(1, 4, navigation);
+    CHECK_FALSE(focus.consumed);
+    CHECK(sink.calls == 1);
+}

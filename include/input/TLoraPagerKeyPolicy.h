@@ -49,6 +49,7 @@ class TLoraPagerKeyPolicy
         uint8_t rawKeyCode = 0;
         bool pressed = false;
         Modifier appliedModifier = Modifier::None;
+        int32_t encoderDelta = 0;
     };
 
     struct Result {
@@ -73,6 +74,7 @@ class TLoraPagerKeyPolicy
         ActionKind kind = ActionKind::None;
         uint8_t codepoint = 0;
         Modifier appliedModifier = Modifier::None;
+        int32_t encoderDelta = 0;
     };
 
     Result makeResult(uint8_t rawKeyCode, bool pressed, const ActiveAction &active) const;
