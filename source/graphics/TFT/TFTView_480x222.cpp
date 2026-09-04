@@ -83,9 +83,49 @@ LV_IMAGE_DECLARE(node_location_pin24_image);
 
 #define VALID_TIME(T) (T > 1000000 && T < UINT32_MAX)
 
-#if defined(ARCH_PORTDUINO) && defined(MESHTASTIC_KOREAN_INPUT)
+#if defined(MESHTASTIC_KOREAN_INPUT)
 namespace
 {
+lv_style_t pagerKeyFocusStyle;
+bool pagerKeyFocusStyleInitialized = false;
+
+void pagerKeyFocusChanged(lv_group_t *group)
+{
+    lv_obj_t *focused = lv_group_get_focused(group);
+    if (!focused || !lv_obj_check_type(focused, &lv_button_class))
+        return;
+
+    // The LVGL default key focus is only a translucent outline. On the Pager's
+    // small display that is easy to miss while rotating the encoder. Keep the
+    // button geometry fixed, but turn the focused button into a high-contrast
+    // blue tile with a white icon or label.
+    lv_obj_remove_style(focused, &pagerKeyFocusStyle, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+    lv_obj_add_style(focused, &pagerKeyFocusStyle, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+}
+
+void initPagerKeyFocusStyle(void)
+{
+    if (!pagerKeyFocusStyleInitialized) {
+        lv_style_init(&pagerKeyFocusStyle);
+        lv_style_set_bg_color(&pagerKeyFocusStyle, lv_color_hex(0x216ad8));
+        lv_style_set_bg_opa(&pagerKeyFocusStyle, LV_OPA_COVER);
+        lv_style_set_bg_image_recolor(&pagerKeyFocusStyle, lv_color_white());
+        lv_style_set_bg_image_recolor_opa(&pagerKeyFocusStyle, LV_OPA_COVER);
+        lv_style_set_text_color(&pagerKeyFocusStyle, lv_color_white());
+        lv_style_set_border_color(&pagerKeyFocusStyle, lv_color_hex(0x8ab4f8));
+        lv_style_set_border_opa(&pagerKeyFocusStyle, LV_OPA_COVER);
+        lv_style_set_border_width(&pagerKeyFocusStyle, 2);
+        lv_style_set_border_side(&pagerKeyFocusStyle, LV_BORDER_SIDE_FULL);
+        lv_style_set_outline_width(&pagerKeyFocusStyle, 0);
+        pagerKeyFocusStyleInitialized = true;
+    }
+
+    lv_group_t *group = lv_group_get_default();
+    if (group)
+        lv_group_set_focus_cb(group, pagerKeyFocusChanged);
+}
+
+#if defined(ARCH_PORTDUINO)
 uint32_t countLabelsContaining(lv_obj_t *root, const char *expected)
 {
     uint32_t matches = 0;
@@ -100,6 +140,7 @@ uint32_t countLabelsContaining(lv_obj_t *root, const char *expected)
         matches += countLabelsContaining(lv_obj_get_child(root, i), expected);
     return matches;
 }
+#endif
 } // namespace
 #endif
 
@@ -388,6 +429,7 @@ void TFTView_480x222::init_screens(void)
     ui_init();
     apply_hotfix();
 #if defined(MESHTASTIC_KOREAN_INPUT)
+    initPagerKeyFocusStyle();
     messageInputPresenter = new MessageInputPresenter(objects.message_input_area, objects.message_input_mode_label);
     setTLoraPagerActionSink(this);
     renderMessageInput();
