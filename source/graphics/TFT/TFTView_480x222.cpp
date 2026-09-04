@@ -89,21 +89,14 @@ namespace
 lv_style_t pagerKeyFocusStyle;
 bool pagerKeyFocusStyleInitialized = false;
 
-void pagerKeyFocusChanged(lv_group_t *group)
+lv_obj_tree_walk_res_t addPagerKeyFocusStyle(lv_obj_t *obj, void *)
 {
-    lv_obj_t *focused = lv_group_get_focused(group);
-    if (!focused || !lv_obj_check_type(focused, &lv_button_class))
-        return;
-
-    // The LVGL default key focus is only a translucent outline. On the Pager's
-    // small display that is easy to miss while rotating the encoder. Keep the
-    // button geometry fixed, but turn the focused button into a high-contrast
-    // blue tile with a white icon or label.
-    lv_obj_remove_style(focused, &pagerKeyFocusStyle, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
-    lv_obj_add_style(focused, &pagerKeyFocusStyle, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+    if (lv_obj_check_type(obj, &lv_button_class))
+        lv_obj_add_style(obj, &pagerKeyFocusStyle, LV_PART_MAIN | LV_STATE_FOCUS_KEY);
+    return LV_OBJ_TREE_WALK_NEXT;
 }
 
-void initPagerKeyFocusStyle(void)
+void initPagerKeyFocusStyle(lv_obj_t *root)
 {
     if (!pagerKeyFocusStyleInitialized) {
         lv_style_init(&pagerKeyFocusStyle);
@@ -120,9 +113,9 @@ void initPagerKeyFocusStyle(void)
         pagerKeyFocusStyleInitialized = true;
     }
 
-    lv_group_t *group = lv_group_get_default();
-    if (group)
-        lv_group_set_focus_cb(group, pagerKeyFocusChanged);
+    // Let LVGL apply the focus state without a synchronous group callback.
+    if (root)
+        lv_obj_tree_walk(root, addPagerKeyFocusStyle, nullptr);
 }
 
 lv_obj_t *focusedPagerTextArea(void)
@@ -438,7 +431,7 @@ void TFTView_480x222::init_screens(void)
     ui_init();
     apply_hotfix();
 #if defined(MESHTASTIC_KOREAN_INPUT)
-    initPagerKeyFocusStyle();
+    initPagerKeyFocusStyle(objects.main_screen);
     messageInputPresenter = new MessageInputPresenter(objects.message_input_area, objects.message_input_mode_label);
     setTLoraPagerActionSink(this);
     renderMessageInput();
