@@ -1639,7 +1639,10 @@ void TFTView_480x222::ui_event_BlankScreenButton(lv_event_t *e)
 #if defined(MESHTASTIC_KOREAN_INPUT)
 bool TFTView_480x222::isTLoraPagerTextInputActive() const
 {
-    return activePanel == objects.messages_panel && lv_obj_has_state(objects.message_input_area, LV_STATE_FOCUSED);
+    // The physical keyboard is the primary composer on the Pager.  Treat the
+    // whole Messages panel as text-entry context so the first character is not
+    // silently sent to whichever navigation button still owns LVGL focus.
+    return activePanel == objects.messages_panel;
 }
 
 void TFTView_480x222::renderMessageInput()
@@ -1685,12 +1688,15 @@ bool TFTView_480x222::handleTLoraPagerAction(const TLoraPagerKeyPolicy::Action &
     using Kind = TLoraPagerKeyPolicy::ActionKind;
     switch (action.kind) {
     case Kind::Character:
+        lv_group_focus_obj(objects.message_input_area);
         messageInputSession.insertAscii(static_cast<uint8_t>(action.codepoint));
         break;
     case Kind::TextBackspace:
+        lv_group_focus_obj(objects.message_input_area);
         messageInputSession.backspace();
         break;
     case Kind::ToggleInputMode:
+        lv_group_focus_obj(objects.message_input_area);
         messageInputSession.toggleMode();
         break;
     case Kind::Submit:
@@ -6553,7 +6559,7 @@ void TFTView_480x222::updateBluetoothConfig(const meshtastic_Config_BluetoothCon
         ownNode = id;
     }
 
-    if (state <= MeshtasticView::eBootScreenDone && state != MeshtasticView::eWaitingForReboot) {
+    if (cfg.enabled && state <= MeshtasticView::eBootScreenDone && state != MeshtasticView::eWaitingForReboot) {
         enterProgrammingMode();
     }
 }

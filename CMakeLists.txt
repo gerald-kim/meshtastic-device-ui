@@ -16,6 +16,7 @@ endif()
 option(ENABLE_DOCTESTS "Include tests in the library. Setting this to OFF will remove all doctest related code.
                         Tests in tests/*.cpp will still be enabled." ${MAIN_PROJECT})
 option(ENABLE_DEBUG_LOG "Enable debug log" OFF)
+option(ENABLE_LIBHANGUL_ORACLE "Enable libhangul differential tests" OFF)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ON) # with newer cmake versions put all find_package in global scope
@@ -82,6 +83,12 @@ if(ENABLE_DOCTESTS)
     enable_testing()
     add_executable(tests ${sources_test})
     target_link_libraries(tests PRIVATE DeviceUI doctest::doctest lvgl::lvgl LovyanGFX Portduino Protobufs)
+    if(ENABLE_LIBHANGUL_ORACLE)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(LIBHANGUL REQUIRED IMPORTED_TARGET libhangul)
+        target_compile_definitions(tests PRIVATE HANGUL_COMPOSER_WITH_LIBHANGUL)
+        target_link_libraries(tests PRIVATE PkgConfig::LIBHANGUL)
+    endif()
     target_include_directories(tests PRIVATE 
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src

@@ -258,6 +258,12 @@ void TLoraPagerKeyboardInputDriver::readKeyboard(uint8_t address, lv_indev_t *in
 
     const bool textInput = controller.isTextInputActive();
     const TLoraPagerKeyPolicy::RawEvent raw{static_cast<uint8_t>(fifoEvent & 0x7f), (fifoEvent & 0x80) != 0, millis()};
+    // Pager text actions are handled directly by TLoraPagerInputController and
+    // therefore never reach LVGL as a pressed key. Explicitly count every
+    // physical key-down as display activity so continuous typing resets the
+    // screen timeout and a key that woke light sleep keeps the display awake.
+    if (raw.pressed)
+        lv_display_trigger_activity(nullptr);
     const auto dispatch = controller.feed(raw, {true, textInput});
     if (dispatch.consumed || !dispatch.policy.emit)
         return;

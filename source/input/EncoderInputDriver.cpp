@@ -4,14 +4,50 @@
 #include "Arduino.h"
 #include "util/ILog.h"
 
+#if INPUTDRIVER_ENCODER_TYPE == 1
+#include "RotaryEncoder.h"
+
+namespace
+{
+RotaryEncoder *rotaryEncoder = nullptr;
+volatile int32_t rotaryDelta = 0;
+
+void rotaryInterruptHandler()
+{
+    if (!rotaryEncoder)
+        return;
+
+    const auto direction = rotaryEncoder->process();
+    if (direction == RotaryEncoder::DIRECTION_CCW)
+        rotaryDelta = rotaryDelta - 1;
+    else if (direction == RotaryEncoder::DIRECTION_CW)
+        rotaryDelta = rotaryDelta + 1;
+}
+} // namespace
+#endif
+
 volatile EncoderInputDriver::EncoderActionType EncoderInputDriver::action = TB_ACTION_NONE;
 
 EncoderInputDriver::EncoderInputDriver(void) {}
 
 void EncoderInputDriver::init(void)
 {
+    ILOG_INFO("Initialize encoder input driver type %d", INPUTDRIVER_ENCODER_TYPE);
+
+    // Mechanical quadrature encoder, polled by LVGL.
+    if (INPUTDRIVER_ENCODER_TYPE == 1) {
+#if defined(INPUTDRIVER_ENCODER_LEFT) && defined(INPUTDRIVER_ENCODER_RIGHT)
+#ifdef INPUTDRIVER_ENCODER_BTN
+        rotaryEncoder = new RotaryEncoder(INPUTDRIVER_ENCODER_LEFT, INPUTDRIVER_ENCODER_RIGHT, INPUTDRIVER_ENCODER_BTN);
+#else
+        rotaryEncoder = new RotaryEncoder(INPUTDRIVER_ENCODER_LEFT, INPUTDRIVER_ENCODER_RIGHT);
+#endif
+        attachInterrupt(INPUTDRIVER_ENCODER_LEFT, rotaryInterruptHandler, CHANGE);
+        attachInterrupt(INPUTDRIVER_ENCODER_RIGHT, rotaryInterruptHandler, CHANGE);
+#endif
+    }
     // trackball or joystick type encoder with four directions
-    if (INPUTDRIVER_ENCODER_TYPE == 3) {
+    else if (INPUTDRIVER_ENCODER_TYPE == 3) {
 #ifdef INPUTDRIVER_ENCODER_LEFT
         pinMode(INPUTDRIVER_ENCODER_LEFT, INPUT_PULLUP);
         attachInterrupt(INPUTDRIVER_ENCODER_LEFT, intLeftHandler, RISING);
@@ -46,32 +82,27 @@ void EncoderInputDriver::init(void)
 
 void EncoderInputDriver::encoder_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
-    // encoder w/o interrupts but read GPIOs directly
+    data->key = 0;
+    data->enc_diff = 0;
+    data->state = LV_INDEV_STATE_RELEASED;
+
+    // Consume every quadrature step accumulated by the GPIO interrupts. Keep
+    // the button state asserted while held so LVGL emits LONG_PRESSED.
     if (INPUTDRIVER_ENCODER_TYPE == 1) {
-#ifdef INPUTDRIVER_ENCODER_LEFT
-        if (digitalRead(INPUTDRIVER_ENCODER_LEFT))
-            data->enc_diff = -1;
-#endif
-#ifdef INPUTDRIVER_ENCODER_RIGHT
-        if (digitalRead(INPUTDRIVER_ENCODER_RIGHT))
-            data->enc_diff = 1;
-#endif
+        noInterrupts();
+        data->enc_diff = rotaryDelta;
+        rotaryDelta = 0;
+        interrupts();
 #ifdef INPUTDRIVER_ENCODER_BTN
-        // FIXME: need same logix as below to trigger LONG_PRESSED events
-        if (!digitalRead(INPUTDRIVER_ENCODER_BTN)) {
-            data->key = LV_KEY_ENTER;
+        data->key = LV_KEY_ENTER;
+        if (!digitalRead(INPUTDRIVER_ENCODER_BTN))
             data->state = LV_INDEV_STATE_PRESSED;
-        }
 #endif
     }
     // trackball/joystick with additional up/down inputs to control sliders
     else if (INPUTDRIVER_ENCODER_TYPE == 3) {
         static uint32_t prevkey = 0;
         static uint32_t lastPressed = millis();
-
-        data->key = 0;
-        data->enc_diff = 0;
-        data->state = LV_INDEV_STATE_RELEASED;
 
 #ifdef INPUTDRIVER_ENCODER_BTN
         if (action == TB_ACTION_NONE) {
